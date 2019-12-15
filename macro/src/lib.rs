@@ -2,11 +2,12 @@ extern crate proc_macro;
 
 use self::util::ItemImplExt;
 use pmutil::{prelude::*, smart_quote};
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
+use std::iter::once;
 use syn::{
-    parse, punctuated::Punctuated, Data, DeriveInput, Expr, FieldValue, Fields, GenericParam,
-    ItemImpl, Token,
+    parse, punctuated::Punctuated, Arm, Data, DeriveInput, Expr, ExprLit, ExprMatch, FieldValue,
+    Fields, GenericParam, ItemImpl, Lit, LitStr, Pat, PatLit, Token,
 };
 
 mod util;
@@ -122,6 +123,72 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             body;
 
                             v.into_iter()
+                        }
+                    }
+                }
+            ))
+            .parse::<ItemImpl>()
+            .with_generics(input.generics.clone())
+            .to_tokens(&mut tts);
+    }
+
+    {
+        // std::ops::Index
+        let body = ExprMatch {
+            attrs: Default::default(),
+            match_token: Default::default(),
+            expr: Quote::new_call_site()
+                .quote_with(smart_quote!(Vars {}, { v }))
+                .parse(),
+            brace_token: Default::default(),
+            arms: fields
+                .iter()
+                .map(|f| {
+                    //
+                    Arm {
+                        attrs: Default::default(),
+                        pat: Pat::Lit(PatLit {
+                            attrs: Default::default(),
+                            expr: Box::new(Expr::Lit(ExprLit {
+                                attrs: Default::default(),
+                                lit: Lit::Str(LitStr::new(
+                                    &f.ident.as_ref().unwrap().to_string(),
+                                    Span::call_site(),
+                                )),
+                            })),
+                        }),
+                        guard: None,
+                        fat_arrow_token: Default::default(),
+                        body: Quote::new_call_site()
+                            .quote_with(smart_quote!(Vars { variant: &f.ident }, { &self.variant }))
+                            .parse(),
+                        comma: Some(Default::default()),
+                    }
+                })
+                .chain(once(
+                    Quote::new_call_site()
+                        .quote_with(smart_quote!(Vars {}, {
+                            _ => panic!("Unknown key: {}", v),
+                        }))
+                        .parse(),
+                ))
+                .collect(),
+        };
+
+        Quote::new_call_site()
+            .quote_with(smart_quote!(
+                Vars {
+                    Type: &name,
+                    T: &data_type,
+                    body,
+                },
+                {
+                    impl<'a, K: ?Sized + ::std::borrow::Borrow<str>> ::std::ops::Index<&'a K> for Type {
+                        type Output = T;
+                        fn index(&self, v: &K) -> &Self::Output {
+                            use std::borrow::Borrow;
+                            let v: &str = v.borrow();
+                            body
                         }
                     }
                 }

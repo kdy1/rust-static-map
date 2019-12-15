@@ -83,12 +83,15 @@ impl ItemImplExt for ItemImpl {
         match self.generics.where_clause {
             Some(WhereClause {
                 ref mut predicates, ..
-            }) => predicates.extend(
-                generics
-                    .where_clause
-                    .into_iter()
-                    .flat_map(|wc| wc.predicates.into_pairs()),
-            ),
+            }) => {
+                println!("FOO");
+                predicates.extend(
+                    generics
+                        .where_clause
+                        .into_iter()
+                        .flat_map(|wc| wc.predicates.into_pairs()),
+                )
+            }
             ref mut opt @ None => *opt = generics.where_clause,
         }
 
