@@ -1,0 +1,11 @@
+[package]
+name = "static-map"
+version = "0.1.0"
+authors = ["강동윤 <kdy1997.dev@gmail.com>"]
+edition = "2018"
+
+[lib]
+
+[dependencies]
+arrayvec = "0.5.1"
+static-map-macro = { path = "./macro", version = "0.1.0" }

@@ -1,0 +1,14 @@
+[package]
+name = "static-map-macro"
+version = "0.1.0"
+authors = ["강동윤 <kdy1997.dev@gmail.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "1", features = ["full"] }
+proc-macro2 = "1"
+pmutil = "0.5.2"
+quote = "1"
