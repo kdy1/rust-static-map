@@ -14,4 +14,4 @@ repository = "https://github.com/kdy1/rust-static-map"
 
 [dependencies]
 arrayvec = "0.5.1"
-static-map-macro = { path = "./macro", version = "0.1.0" }
+static-map-macro = { path = "./macro", version = "0.2.0" }

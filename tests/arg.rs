@@ -1,4 +1,4 @@
-use static_map::StaticMap;
+use st_map::StaticMap;
 
 #[derive(StaticMap)]
 pub struct Record<T> {
