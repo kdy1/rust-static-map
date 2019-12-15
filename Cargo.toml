@@ -1,5 +1,7 @@
+[workspace]
+
 [package]
-name = "static-map"
+name = "st-map"
 description = "Runtime for a stack-alocated map"
 version = "0.1.0"
 authors = ["강동윤 <kdy1997.dev@gmail.com>"]
