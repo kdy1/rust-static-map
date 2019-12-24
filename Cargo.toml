@@ -3,7 +3,7 @@
 [package]
 name = "st-map"
 description = "Runtime for a stack-alocated map"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["강동윤 <kdy1997.dev@gmail.com>"]
 edition = "2018"
 license = "MIT"

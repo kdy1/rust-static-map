@@ -82,7 +82,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 },
                 {
                     impl Type {
-                        fn iter(&self) -> impl Iterator<Item = (&'static str, &T)> {
+                        pub fn iter(&self) -> impl Iterator<Item = (&'static str, &T)> {
                             let mut v: st_map::arrayvec::ArrayVec<[_; len]> = Default::default();
 
                             iter_body;
@@ -90,7 +90,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             v.into_iter()
                         }
 
-                        fn iter_mut(&mut self) -> impl Iterator<Item = (&'static str, &mut T)> {
+                        pub fn iter_mut(&mut self) -> impl Iterator<Item = (&'static str, &mut T)> {
                             let mut v: st_map::arrayvec::ArrayVec<[_; len]> = Default::default();
 
                             iter_mut_body;
