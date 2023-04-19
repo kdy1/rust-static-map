@@ -98,66 +98,6 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         for item in items {
             item.to_tokens(&mut tts);
         }
-
-        Quote::new_call_site()
-            .quote_with(smart_quote!(
-                Vars {
-                    Type: &name,
-                    T: &data_type,
-                    len,
-                    iter_body: make(Mode::ByRef),
-                    iter_mut_body: make(Mode::ByMutRef),
-                },
-                {
-                    impl Type {
-                        pub fn iter(&self) -> impl Iterator<Item = (&'static str, &T)> {
-                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
-
-                            iter_body;
-
-                            v.into_iter()
-                        }
-
-                        pub fn iter_mut(&mut self) -> impl Iterator<Item = (&'static str, &mut T)> {
-                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
-
-                            iter_mut_body;
-
-                            v.into_iter()
-                        }
-                    }
-                }
-            ))
-            .parse::<ItemImpl>()
-            .with_generics(input.generics.clone())
-            .to_tokens(&mut tts);
-
-        Quote::new_call_site()
-            .quote_with(smart_quote!(
-                Vars {
-                    Type: &name,
-                    T: &data_type,
-                    body: make(Mode::ByValue),
-                    len
-                },
-                {
-                    impl IntoIterator for Type {
-                        type Item = (&'static str, T);
-                        type IntoIter = st_map::arrayvec::IntoIter<(&'static str, T), len>;
-
-                        fn into_iter(self) -> Self::IntoIter {
-                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
-
-                            body;
-
-                            v.into_iter()
-                        }
-                    }
-                }
-            ))
-            .parse::<ItemImpl>()
-            .with_generics(input.generics.clone())
-            .to_tokens(&mut tts);
     }
 
     {
