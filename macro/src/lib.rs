@@ -408,5 +408,24 @@ fn make_iterator(
     );
     iter_impl.generics.where_clause = where_clause;
 
-    vec![iter_type, Item::Impl(iter_impl)]
+    let impl_for_method = {
+        let (recv, method_name) = match mode {
+            Mode::Value => (quote!(self), quote!(into_iter)),
+            Mode::Ref => (quote!(&self), quote!(iter)),
+            Mode::MutRef => (quote!(&mut self), quote!(iter_mut)),
+        };
+
+        parse_quote! {
+            impl #type_name {
+                pub fn #method_name(#recv) -> #iter_type_name #type_generic {
+                    #iter_type_name {
+                        cur_index: 0,
+                        data: self,
+                    }
+                }
+            }
+        }
+    };
+
+    vec![iter_type, Item::Impl(iter_impl), impl_for_method]
 }
