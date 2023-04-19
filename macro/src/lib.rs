@@ -37,7 +37,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
         _ => panic!("StaticMap can only be applied to structs"),
     };
-    let (data_type, len) = (fields.first().unwrap().ty.clone(), fields.len());
+    let data_type = fields.first().unwrap().ty.clone();
 
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -254,6 +254,8 @@ fn make_iterator(
     generic: &Generics,
     mode: Mode,
 ) -> Vec<Item> {
+    let len = fields.len();
+
     let where_clause = generic.where_clause.clone();
 
     let type_generic = {
@@ -319,7 +321,9 @@ fn make_iterator(
             match mode {
                 Mode::ByValue => quote!(#pat => Some((#name_str, self.data.#name))),
                 Mode::ByRef => quote!(#pat => Some((#name_str, &self.data.#name))),
-                Mode::ByMutRef => quote!(#pat => Some((#name_str, &mut self.data.#name))),
+                Mode::ByMutRef => quote!(#pat => Some((#name_str, unsafe {
+                    std::mem::transmute::<&mut _, &'a mut _>(&mut self.data.#name)
+                }))),
             }
         })
         .collect::<Punctuated<_, Comma>>();
@@ -341,6 +345,11 @@ fn make_iterator(
 
                     _ => None
                 }
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let len = #len - self.cur_index;
+                (len, Some(len))
             }
         }
     );
