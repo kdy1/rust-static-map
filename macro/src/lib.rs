@@ -39,42 +39,18 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
     let (data_type, len) = (fields.first().unwrap().ty.clone(), fields.len());
 
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
     let mut tts = TokenStream::new();
+
+    let type_name = parse_quote!(#name #ty_generics);
 
     {
         // Iterators
 
-        let make = |m: Mode| {
-            let arr: Punctuated<_, Token![;]> = fields
-                .iter()
-                .map(|f| {
-                    //
-                    Quote::new_call_site()
-                        .quote_with(smart_quote!(
-                            Vars {
-                                name: f.ident.as_ref().unwrap(),
-
-                                mode: match m {
-                                    Mode::ByValue => quote!(),
-                                    Mode::ByRef => quote!(&),
-                                    Mode::ByMutRef => quote!(&mut),
-                                },
-
-                                // self.field
-                                value: f.ident.as_ref().unwrap(),
-                            },
-                            (v.push((stringify!(name), mode self.value)))
-                        ))
-                        .parse::<Expr>()
-                })
-                .collect();
-
-            arr
-        };
-
         let mut items = vec![];
         items.extend(make_iterator(
-            &name,
+            &type_name,
             &data_type,
             &Ident::new(&format!("{name}Iter"), Span::call_site()),
             &fields,
@@ -82,7 +58,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Mode::ByValue,
         ));
         items.extend(make_iterator(
-            &name,
+            &type_name,
             &data_type,
             &Ident::new(&format!("{name}RefIter"), Span::call_site()),
             &fields,
@@ -90,7 +66,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Mode::ByRef,
         ));
         items.extend(make_iterator(
-            &name,
+            &type_name,
             &data_type,
             &Ident::new(&format!("{name}MutIter"), Span::call_site()),
             &fields,
@@ -171,7 +147,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     {
         assert!(
-            input.generics.params.len() == 0 || input.generics.params.len() == 1,
+            input.generics.params.is_empty() || input.generics.params.len() == 1,
             "StaticMap should have zero or one generic argument"
         );
 
@@ -271,7 +247,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn make_iterator(
-    type_name: &Ident,
+    type_name: &Type,
     data_type: &Type,
     iter_type_name: &Ident,
     fields: &Punctuated<Field, Comma>,
@@ -293,14 +269,17 @@ fn make_iterator(
     let iter_type = parse_quote!(
         struct #iter_type_name #generic {
             cur_index: usize,
-            data: #lifetime #type_name<#data_type>,
+            data: #lifetime #type_name,
         }
     );
     let iter_impl = parse_quote!(
         impl #generic Iterator for #iter_type_name #generic {
             type Item = (&'static str, #lifetime #data_type);
 
-            fn next(&mut self) -> Option<Self::Item> {}
+            fn next(&mut self) -> Option<Self::Item> {
+                self.cur_index += 1;
+                match self.cur_index {}
+            }
         }
     );
 
