@@ -254,10 +254,20 @@ fn make_iterator(
     generic: &Generics,
     mode: Mode,
 ) -> Vec<Item> {
-    let generic = match mode {
-        Mode::ByValue => quote!(<T>),
-        Mode::ByRef => quote!(<'a, T>),
-        Mode::ByMutRef => quote!(<'a, T>),
+    let mut where_clauses = generic.where_clause.clone();
+
+    let generic = {
+        let type_generic = generic.params.last();
+        let type_generic = match type_generic {
+            Some(GenericParam::Type(t)) => Some(t.ident.clone()),
+            _ => None,
+        };
+
+        match mode {
+            Mode::ByValue => quote!(<#type_generic>),
+            Mode::ByRef => quote!(<'a, #type_generic>),
+            Mode::ByMutRef => quote!(<'a, #type_generic>),
+        }
     };
 
     let lifetime = match mode {
