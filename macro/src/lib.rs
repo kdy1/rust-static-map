@@ -8,15 +8,15 @@ use std::iter::once;
 use syn::{
     parse, parse_quote, punctuated::Punctuated, token::Comma, Arm, Data, DeriveInput, Expr,
     ExprLit, ExprMatch, Field, FieldValue, Fields, GenericParam, Generics, Ident, Item, ItemImpl,
-    ItemStruct, Lit, LitStr, Pat, PatLit, Token, Type,
+    Lit, LitStr, Pat, PatLit, Token, Type,
 };
 
 mod util;
 
 enum Mode {
-    ByValue,
-    ByRef,
-    ByMutRef,
+    Value,
+    Ref,
+    MutRef,
 }
 
 #[proc_macro_derive(StaticMap)]
@@ -37,33 +37,86 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
         _ => panic!("StaticMap can only be applied to structs"),
     };
+    let len = fields.len();
     let data_type = fields.first().unwrap().ty.clone();
 
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let (_impl_generics, ty_generics, _where_clause) = input.generics.split_for_impl();
 
     let mut tts = TokenStream::new();
 
     let type_name = parse_quote!(#name #ty_generics);
 
     {
+        // IntoIterator
+
+        let make = |m: Mode| {
+            let arr: Punctuated<_, Token![;]> = fields
+                .iter()
+                .map(|f| {
+                    //
+                    Quote::new_call_site()
+                        .quote_with(smart_quote!(
+                            Vars {
+                                name: f.ident.as_ref().unwrap(),
+
+                                mode: match m {
+                                    Mode::Value => quote!(),
+                                    Mode::Ref => quote!(&),
+                                    Mode::MutRef => quote!(&mut),
+                                },
+
+                                // self.field
+                                value: f.ident.as_ref().unwrap(),
+                            },
+                            (v.push((stringify!(name), mode self.value)))
+                        ))
+                        .parse::<Expr>()
+                })
+                .collect();
+
+            arr
+        };
+
+        Quote::new_call_site()
+            .quote_with(smart_quote!(
+                Vars {
+                    Type: &name,
+                    T: &data_type,
+                    body: make(Mode::Value),
+                    len
+                },
+                {
+                    impl IntoIterator for Type {
+                        type Item = (&'static str, T);
+                        type IntoIter = st_map::arrayvec::IntoIter<(&'static str, T), len>;
+
+                        fn into_iter(self) -> Self::IntoIter {
+                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
+
+                            body;
+
+                            v.into_iter()
+                        }
+                    }
+                }
+            ))
+            .parse::<ItemImpl>()
+            .with_generics(input.generics.clone())
+            .to_tokens(&mut tts);
+    }
+
+    {
         // Iterators
 
         let mut items = vec![];
-        items.extend(make_iterator(
-            &type_name,
-            &data_type,
-            &Ident::new(&format!("{name}Iter"), Span::call_site()),
-            &fields,
-            &input.generics,
-            Mode::ByValue,
-        ));
+
         items.extend(make_iterator(
             &type_name,
             &data_type,
             &Ident::new(&format!("{name}RefIter"), Span::call_site()),
             &fields,
             &input.generics,
-            Mode::ByRef,
+            Mode::Ref,
         ));
         items.extend(make_iterator(
             &type_name,
@@ -71,7 +124,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &Ident::new(&format!("{name}MutIter"), Span::call_site()),
             &fields,
             &input.generics,
-            Mode::ByMutRef,
+            Mode::MutRef,
         ));
 
         for item in items {
@@ -271,15 +324,15 @@ fn make_iterator(
                 };
 
                 match mode {
-                    Mode::ByValue => quote!(<#param_name #bounds>),
-                    Mode::ByRef => quote!(<'a, #param_name #bounds>),
-                    Mode::ByMutRef => quote!(<'a, #param_name #bounds>),
+                    Mode::Value => quote!(<#param_name #bounds>),
+                    Mode::Ref => quote!(<'a, #param_name #bounds>),
+                    Mode::MutRef => quote!(<'a, #param_name #bounds>),
                 }
             }
             _ => match mode {
-                Mode::ByValue => quote!(),
-                Mode::ByRef => quote!(<'a>),
-                Mode::ByMutRef => quote!(<'a>),
+                Mode::Value => quote!(),
+                Mode::Ref => quote!(<'a>),
+                Mode::MutRef => quote!(<'a>),
             },
         }
     };
@@ -291,23 +344,23 @@ fn make_iterator(
                 let param_name = t.ident.clone();
 
                 match mode {
-                    Mode::ByValue => quote!(<#param_name>),
-                    Mode::ByRef => quote!(<'a, #param_name>),
-                    Mode::ByMutRef => quote!(<'a, #param_name>),
+                    Mode::Value => quote!(<#param_name>),
+                    Mode::Ref => quote!(<'a, #param_name>),
+                    Mode::MutRef => quote!(<'a, #param_name>),
                 }
             }
             _ => match mode {
-                Mode::ByValue => quote!(),
-                Mode::ByRef => quote!(<'a>),
-                Mode::ByMutRef => quote!(<'a>),
+                Mode::Value => quote!(),
+                Mode::Ref => quote!(<'a>),
+                Mode::MutRef => quote!(<'a>),
             },
         }
     };
 
     let lifetime = match mode {
-        Mode::ByValue => quote!(),
-        Mode::ByRef => quote!(&'a),
-        Mode::ByMutRef => quote!(&'a mut),
+        Mode::Value => quote!(),
+        Mode::Ref => quote!(&'a),
+        Mode::MutRef => quote!(&'a mut),
     };
 
     let arms = fields
@@ -319,9 +372,9 @@ fn make_iterator(
             let name = f.ident.as_ref().unwrap();
             let name_str = name.to_string();
             match mode {
-                Mode::ByValue => quote!(#pat => Some((#name_str, self.data.#name))),
-                Mode::ByRef => quote!(#pat => Some((#name_str, &self.data.#name))),
-                Mode::ByMutRef => quote!(#pat => Some((#name_str, unsafe {
+                Mode::Value => quote!(#pat => Some((#name_str, self.data.#name))),
+                Mode::Ref => quote!(#pat => Some((#name_str, &self.data.#name))),
+                Mode::MutRef => quote!(#pat => Some((#name_str, unsafe {
                     std::mem::transmute::<&mut _, &'a mut _>(&mut self.data.#name)
                 }))),
             }
