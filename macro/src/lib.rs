@@ -300,7 +300,7 @@ fn make_iterator(
         impl #generic Iterator for #iter_type_name #generic {
             type Item = (&'static str, #lifetime #data_type);
 
-            fn next(&self) -> Option<Self::Item> {}
+            fn next(&mut self) -> Option<Self::Item> {}
         }
     );
 
