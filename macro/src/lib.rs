@@ -254,19 +254,25 @@ fn make_iterator(
     generic: &Generics,
     mode: Mode,
 ) -> Vec<Item> {
-    let mut where_clauses = generic.where_clause.clone();
+    let where_clause = generic.where_clause.clone();
 
     let generic = {
         let type_generic = generic.params.last();
-        let type_generic = match type_generic {
-            Some(GenericParam::Type(t)) => Some(t.ident.clone()),
-            _ => None,
-        };
+        match type_generic {
+            Some(GenericParam::Type(t)) => {
+                let param_name = t.ident.clone();
 
-        match mode {
-            Mode::ByValue => quote!(<#type_generic>),
-            Mode::ByRef => quote!(<'a, #type_generic>),
-            Mode::ByMutRef => quote!(<'a, #type_generic>),
+                match mode {
+                    Mode::ByValue => quote!(<#param_name>),
+                    Mode::ByRef => quote!(<'a, #param_name>),
+                    Mode::ByMutRef => quote!(<'a, #param_name>),
+                }
+            }
+            _ => match mode {
+                Mode::ByValue => quote!(),
+                Mode::ByRef => quote!(<'a>),
+                Mode::ByMutRef => quote!(<'a>),
+            },
         }
     };
 
@@ -282,7 +288,7 @@ fn make_iterator(
             data: #lifetime #type_name,
         }
     );
-    let iter_impl = parse_quote!(
+    let mut iter_impl: ItemImpl = parse_quote!(
         impl #generic Iterator for #iter_type_name #generic {
             type Item = (&'static str, #lifetime #data_type);
 
@@ -292,6 +298,7 @@ fn make_iterator(
             }
         }
     );
+    iter_impl.generics.where_clause = where_clause;
 
     vec![iter_type, Item::Impl(iter_impl)]
 }
