@@ -308,6 +308,22 @@ fn make_iterator(
         Mode::ByMutRef => quote!(&'a mut),
     };
 
+    let arms = fields
+        .iter()
+        .enumerate()
+        .map(|(idx, f)| {
+            let pat = idx + 1;
+
+            let name = f.ident.as_ref().unwrap();
+            let name_str = name.to_string();
+            match mode {
+                Mode::ByValue => quote!(#pat => Some((#name_str, self.data.#name))),
+                Mode::ByRef => quote!(#pat => Some((#name_str, &self.data.#name))),
+                Mode::ByMutRef => quote!(#pat => Some((#name_str, &mut self.data.#name))),
+            }
+        })
+        .collect::<Punctuated<_, Comma>>();
+
     let iter_type = parse_quote!(
         struct #iter_type_name #type_generic {
             cur_index: usize,
@@ -320,7 +336,11 @@ fn make_iterator(
 
             fn next(&mut self) -> Option<Self::Item> {
                 self.cur_index += 1;
-                match self.cur_index {}
+                match self.cur_index {
+                    #arms,
+
+                    _ => None
+                }
             }
         }
     );
