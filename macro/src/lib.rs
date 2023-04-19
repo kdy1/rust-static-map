@@ -274,12 +274,6 @@ fn make_iterator(
     fields: &Punctuated<Field, Comma>,
     mode: Mode,
 ) -> Vec<Item> {
-    let item_type = match mode {
-        Mode::ByValue => quote!(#data_type),
-        Mode::ByRef => quote!(&#data_type),
-        Mode::ByMutRef => quote!(&mut #data_type),
-    };
-
     let generic = match mode {
         Mode::ByValue => quote!(),
         Mode::ByRef => quote!(<'a>),
@@ -300,7 +294,7 @@ fn make_iterator(
     );
     let iter_impl = parse_quote!(
         impl #generic Iterator for #iter_type_name #generic {
-            type Item = (&'static str, #lifetime #item_type);
+            type Item = (&'static str, #lifetime #data_type);
         }
     );
 
