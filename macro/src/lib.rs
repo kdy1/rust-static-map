@@ -6,8 +6,9 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use std::iter::once;
 use syn::{
-    parse, punctuated::Punctuated, Arm, Data, DeriveInput, Expr, ExprLit, ExprMatch, FieldValue,
-    Fields, GenericParam, ItemImpl, Lit, LitStr, Pat, PatLit, Token,
+    parse, parse_quote, punctuated::Punctuated, token::Comma, Arm, Data, DeriveInput, Expr,
+    ExprLit, ExprMatch, Field, FieldValue, Fields, GenericParam, Generics, Ident, Item, ItemImpl,
+    ItemStruct, Lit, LitStr, Pat, PatLit, Token, Type,
 };
 
 mod util;
@@ -70,6 +71,33 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
             arr
         };
+
+        let mut items = vec![];
+        items.extend(make_iterator(
+            &name,
+            &data_type,
+            &Ident::new(&format!("{name}Iter"), Span::call_site()),
+            &fields,
+            Mode::ByValue,
+        ));
+        items.extend(make_iterator(
+            &name,
+            &data_type,
+            &Ident::new(&format!("{name}RefIter"), Span::call_site()),
+            &fields,
+            Mode::ByRef,
+        ));
+        items.extend(make_iterator(
+            &name,
+            &data_type,
+            &Ident::new(&format!("{name}MutIter"), Span::call_site()),
+            &fields,
+            Mode::ByMutRef,
+        ));
+
+        for item in items {
+            item.to_tokens(&mut tts);
+        }
 
         Quote::new_call_site()
             .quote_with(smart_quote!(
@@ -297,4 +325,44 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
 
     tts.into()
+}
+
+fn make_iterator(
+    type_name: &Ident,
+    data_type: &Type,
+    iter_type_name: &Ident,
+    fields: &Punctuated<Field, Comma>,
+    mode: Mode,
+) -> Vec<Item> {
+    let item_type = match mode {
+        Mode::ByValue => quote!(#data_type),
+        Mode::ByRef => quote!(&#data_type),
+        Mode::ByMutRef => quote!(&mut #data_type),
+    };
+
+    let generic = match mode {
+        Mode::ByValue => quote!(),
+        Mode::ByRef => quote!(<'a>),
+        Mode::ByMutRef => quote!(<'a>),
+    };
+
+    let lifetime = match mode {
+        Mode::ByValue => quote!(),
+        Mode::ByRef => quote!(&'a),
+        Mode::ByMutRef => quote!(&'a mut),
+    };
+
+    let iter_type = parse_quote!(
+        struct #iter_type_name #generic {
+            cur_index: usize,
+            data: #lifetime #type_name<#data_type>,
+        }
+    );
+    let iter_impl = parse_quote!(
+        impl #generic Iterator for #iter_type_name #generic {
+            type Item = (&'static str, #lifetime #item_type);
+        }
+    );
+
+    vec![iter_type, Item::Impl(iter_impl)]
 }
