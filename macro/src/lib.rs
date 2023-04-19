@@ -6,16 +6,17 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, ToTokens};
 use std::iter::once;
 use syn::{
-    parse, punctuated::Punctuated, Arm, Data, DeriveInput, Expr, ExprLit, ExprMatch, FieldValue,
-    Fields, GenericParam, ItemImpl, Lit, LitStr, Pat, PatLit, Token,
+    parse, parse_quote, punctuated::Punctuated, token::Comma, Arm, Data, DeriveInput, Expr,
+    ExprLit, ExprMatch, Field, FieldValue, Fields, GenericParam, Generics, Ident, Item, ItemImpl,
+    Lit, LitStr, Pat, PatLit, Token, Type,
 };
 
 mod util;
 
 enum Mode {
-    ByValue,
-    ByRef,
-    ByMutRef,
+    Value,
+    Ref,
+    MutRef,
 }
 
 #[proc_macro_derive(StaticMap)]
@@ -36,12 +37,17 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
         _ => panic!("StaticMap can only be applied to structs"),
     };
-    let (data_type, len) = (fields.first().unwrap().ty.clone(), fields.len());
+    let len = fields.len();
+    let data_type = fields.first().unwrap().ty.clone();
+
+    let (_impl_generics, ty_generics, _where_clause) = input.generics.split_for_impl();
 
     let mut tts = TokenStream::new();
 
+    let type_name = parse_quote!(#name #ty_generics);
+
     {
-        // Iterators
+        // IntoIterator
 
         let make = |m: Mode| {
             let arr: Punctuated<_, Token![;]> = fields
@@ -54,9 +60,9 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                                 name: f.ident.as_ref().unwrap(),
 
                                 mode: match m {
-                                    Mode::ByValue => quote!(),
-                                    Mode::ByRef => quote!(&),
-                                    Mode::ByMutRef => quote!(&mut),
+                                    Mode::Value => quote!(),
+                                    Mode::Ref => quote!(&),
+                                    Mode::MutRef => quote!(&mut),
                                 },
 
                                 // self.field
@@ -76,40 +82,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 Vars {
                     Type: &name,
                     T: &data_type,
-                    len,
-                    iter_body: make(Mode::ByRef),
-                    iter_mut_body: make(Mode::ByMutRef),
-                },
-                {
-                    impl Type {
-                        pub fn iter(&self) -> impl Iterator<Item = (&'static str, &T)> {
-                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
-
-                            iter_body;
-
-                            v.into_iter()
-                        }
-
-                        pub fn iter_mut(&mut self) -> impl Iterator<Item = (&'static str, &mut T)> {
-                            let mut v: st_map::arrayvec::ArrayVec<_, len> = Default::default();
-
-                            iter_mut_body;
-
-                            v.into_iter()
-                        }
-                    }
-                }
-            ))
-            .parse::<ItemImpl>()
-            .with_generics(input.generics.clone())
-            .to_tokens(&mut tts);
-
-        Quote::new_call_site()
-            .quote_with(smart_quote!(
-                Vars {
-                    Type: &name,
-                    T: &data_type,
-                    body: make(Mode::ByValue),
+                    body: make(Mode::Value),
                     len
                 },
                 {
@@ -130,6 +103,33 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             .parse::<ItemImpl>()
             .with_generics(input.generics.clone())
             .to_tokens(&mut tts);
+    }
+
+    {
+        // Iterators
+
+        let mut items = vec![];
+
+        items.extend(make_iterator(
+            &type_name,
+            &data_type,
+            &Ident::new(&format!("{name}RefIter"), Span::call_site()),
+            &fields,
+            &input.generics,
+            Mode::Ref,
+        ));
+        items.extend(make_iterator(
+            &type_name,
+            &data_type,
+            &Ident::new(&format!("{name}MutIter"), Span::call_site()),
+            &fields,
+            &input.generics,
+            Mode::MutRef,
+        ));
+
+        for item in items {
+            item.to_tokens(&mut tts);
+        }
     }
 
     {
@@ -200,7 +200,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     {
         assert!(
-            input.generics.params.len() == 0 || input.generics.params.len() == 1,
+            input.generics.params.is_empty() || input.generics.params.len() == 1,
             "StaticMap should have zero or one generic argument"
         );
 
@@ -297,4 +297,116 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
 
     tts.into()
+}
+
+fn make_iterator(
+    type_name: &Type,
+    data_type: &Type,
+    iter_type_name: &Ident,
+    fields: &Punctuated<Field, Comma>,
+    generic: &Generics,
+    mode: Mode,
+) -> Vec<Item> {
+    let len = fields.len();
+
+    let where_clause = generic.where_clause.clone();
+
+    let type_generic = {
+        let type_generic = generic.params.last();
+        match type_generic {
+            Some(GenericParam::Type(t)) => {
+                let param_name = t.ident.clone();
+                let bounds = if t.bounds.is_empty() {
+                    quote!()
+                } else {
+                    let b = &t.bounds;
+                    quote!(: #b)
+                };
+
+                match mode {
+                    Mode::Value => quote!(<#param_name #bounds>),
+                    Mode::Ref => quote!(<'a, #param_name #bounds>),
+                    Mode::MutRef => quote!(<'a, #param_name #bounds>),
+                }
+            }
+            _ => match mode {
+                Mode::Value => quote!(),
+                Mode::Ref => quote!(<'a>),
+                Mode::MutRef => quote!(<'a>),
+            },
+        }
+    };
+
+    let generic = {
+        let type_generic = generic.params.last();
+        match type_generic {
+            Some(GenericParam::Type(t)) => {
+                let param_name = t.ident.clone();
+
+                match mode {
+                    Mode::Value => quote!(<#param_name>),
+                    Mode::Ref => quote!(<'a, #param_name>),
+                    Mode::MutRef => quote!(<'a, #param_name>),
+                }
+            }
+            _ => match mode {
+                Mode::Value => quote!(),
+                Mode::Ref => quote!(<'a>),
+                Mode::MutRef => quote!(<'a>),
+            },
+        }
+    };
+
+    let lifetime = match mode {
+        Mode::Value => quote!(),
+        Mode::Ref => quote!(&'a),
+        Mode::MutRef => quote!(&'a mut),
+    };
+
+    let arms = fields
+        .iter()
+        .enumerate()
+        .map(|(idx, f)| {
+            let pat = idx + 1;
+
+            let name = f.ident.as_ref().unwrap();
+            let name_str = name.to_string();
+            match mode {
+                Mode::Value => quote!(#pat => Some((#name_str, self.data.#name))),
+                Mode::Ref => quote!(#pat => Some((#name_str, &self.data.#name))),
+                Mode::MutRef => quote!(#pat => Some((#name_str, unsafe {
+                    std::mem::transmute::<&mut _, &'a mut _>(&mut self.data.#name)
+                }))),
+            }
+        })
+        .collect::<Punctuated<_, Comma>>();
+
+    let iter_type = parse_quote!(
+        struct #iter_type_name #type_generic {
+            cur_index: usize,
+            data: #lifetime #type_name,
+        }
+    );
+    let mut iter_impl: ItemImpl = parse_quote!(
+        impl #type_generic Iterator for #iter_type_name #generic {
+            type Item = (&'static str, #lifetime #data_type);
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.cur_index += 1;
+                match self.cur_index {
+                    #arms,
+
+                    _ => None
+                }
+            }
+
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let len = #len - self.cur_index;
+                (len, Some(len))
+            }
+        }
+    );
+    iter_impl.generics.where_clause = where_clause;
+
+    vec![iter_type, Item::Impl(iter_impl)]
 }
