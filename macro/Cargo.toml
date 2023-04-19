@@ -1,7 +1,7 @@
 [package]
 name = "static-map-macro"
 description = "Macro to create a stack-alocated map"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["강동윤 <kdy1997.dev@gmail.com>"]
 edition = "2018"
 license = "MIT"
