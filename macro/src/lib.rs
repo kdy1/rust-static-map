@@ -256,6 +256,32 @@ fn make_iterator(
 ) -> Vec<Item> {
     let where_clause = generic.where_clause.clone();
 
+    let type_generic = {
+        let type_generic = generic.params.last();
+        match type_generic {
+            Some(GenericParam::Type(t)) => {
+                let param_name = t.ident.clone();
+                let bounds = if t.bounds.is_empty() {
+                    quote!()
+                } else {
+                    let b = &t.bounds;
+                    quote!(: #b)
+                };
+
+                match mode {
+                    Mode::ByValue => quote!(<#param_name #bounds>),
+                    Mode::ByRef => quote!(<'a, #param_name #bounds>),
+                    Mode::ByMutRef => quote!(<'a, #param_name #bounds>),
+                }
+            }
+            _ => match mode {
+                Mode::ByValue => quote!(),
+                Mode::ByRef => quote!(<'a>),
+                Mode::ByMutRef => quote!(<'a>),
+            },
+        }
+    };
+
     let generic = {
         let type_generic = generic.params.last();
         match type_generic {
@@ -283,13 +309,13 @@ fn make_iterator(
     };
 
     let iter_type = parse_quote!(
-        struct #iter_type_name #generic {
+        struct #iter_type_name #type_generic {
             cur_index: usize,
             data: #lifetime #type_name,
         }
     );
     let mut iter_impl: ItemImpl = parse_quote!(
-        impl #generic Iterator for #iter_type_name #generic {
+        impl #type_generic Iterator for #iter_type_name #generic {
             type Item = (&'static str, #lifetime #data_type);
 
             fn next(&mut self) -> Option<Self::Item> {
