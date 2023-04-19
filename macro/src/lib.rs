@@ -78,6 +78,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &data_type,
             &Ident::new(&format!("{name}Iter"), Span::call_site()),
             &fields,
+            &input.generics,
             Mode::ByValue,
         ));
         items.extend(make_iterator(
@@ -85,6 +86,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &data_type,
             &Ident::new(&format!("{name}RefIter"), Span::call_site()),
             &fields,
+            &input.generics,
             Mode::ByRef,
         ));
         items.extend(make_iterator(
@@ -92,6 +94,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &data_type,
             &Ident::new(&format!("{name}MutIter"), Span::call_site()),
             &fields,
+            &input.generics,
             Mode::ByMutRef,
         ));
 
@@ -272,12 +275,13 @@ fn make_iterator(
     data_type: &Type,
     iter_type_name: &Ident,
     fields: &Punctuated<Field, Comma>,
+    generic: &Generics,
     mode: Mode,
 ) -> Vec<Item> {
     let generic = match mode {
-        Mode::ByValue => quote!(),
-        Mode::ByRef => quote!(<'a>),
-        Mode::ByMutRef => quote!(<'a>),
+        Mode::ByValue => quote!(<T>),
+        Mode::ByRef => quote!(<'a, T>),
+        Mode::ByMutRef => quote!(<'a, T>),
     };
 
     let lifetime = match mode {
@@ -295,6 +299,8 @@ fn make_iterator(
     let iter_impl = parse_quote!(
         impl #generic Iterator for #iter_type_name #generic {
             type Item = (&'static str, #lifetime #data_type);
+
+            fn next(&self) -> Option<Self::Item> {}
         }
     );
 
