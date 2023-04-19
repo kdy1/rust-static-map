@@ -309,6 +309,8 @@ fn make_iterator(
 ) -> Vec<Item> {
     let len = fields.len();
 
+    let (impl_generics, _, _) = generic.split_for_impl();
+
     let where_clause = generic.where_clause.clone();
 
     let type_generic = {
@@ -334,6 +336,18 @@ fn make_iterator(
                 Mode::Ref => quote!(<'a>),
                 Mode::MutRef => quote!(<'a>),
             },
+        }
+    };
+
+    let generic_arg_for_method = {
+        let type_generic = generic.params.last();
+        match type_generic {
+            Some(GenericParam::Type(t)) => {
+                let param_name = t.ident.clone();
+
+                quote!(<#param_name>)
+            }
+            _ => quote!(),
         }
     };
 
@@ -382,7 +396,7 @@ fn make_iterator(
         .collect::<Punctuated<_, Comma>>();
 
     let iter_type = parse_quote!(
-        struct #iter_type_name #type_generic {
+        pub struct #iter_type_name #type_generic {
             cur_index: usize,
             data: #lifetime #type_name,
         }
@@ -416,8 +430,8 @@ fn make_iterator(
         };
 
         parse_quote! {
-            impl #type_name {
-                pub fn #method_name(#recv) -> #iter_type_name #type_generic {
+            impl #impl_generics #type_name {
+                pub fn #method_name(#recv) -> #iter_type_name #generic_arg_for_method {
                     #iter_type_name {
                         cur_index: 0,
                         data: self,
