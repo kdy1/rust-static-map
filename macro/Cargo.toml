@@ -12,7 +12,7 @@ repository = "https://github.com/kdy1/rust-static-map"
 proc-macro = true
 
 [dependencies]
-syn = { version = "1", features = ["full"] }
+syn = { version = "2", features = ["full"] }
 proc-macro2 = "1"
-pmutil = "0.5.3"
+pmutil = "0.6.0"
 quote = "1"
