@@ -7,8 +7,8 @@ use quote::{quote, ToTokens};
 use std::iter::once;
 use syn::{
     parse, parse_quote, punctuated::Punctuated, token::Comma, Arm, Data, DeriveInput, Expr,
-    ExprLit, ExprMatch, Field, FieldValue, Fields, GenericParam, Generics, Ident, Item, ItemImpl,
-    Lit, LitStr, Pat, PatLit, Token, Type,
+    ExprMatch, Field, FieldValue, Fields, GenericParam, Generics, Ident, Item, ItemImpl, Lit,
+    LitStr, Pat, PatLit, Token, Type,
 };
 
 mod util;
@@ -149,13 +149,10 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                         attrs: Default::default(),
                         pat: Pat::Lit(PatLit {
                             attrs: Default::default(),
-                            expr: Box::new(Expr::Lit(ExprLit {
-                                attrs: Default::default(),
-                                lit: Lit::Str(LitStr::new(
-                                    &f.ident.as_ref().unwrap().to_string(),
-                                    Span::call_site(),
-                                )),
-                            })),
+                            lit: Lit::Str(LitStr::new(
+                                &f.ident.as_ref().unwrap().to_string(),
+                                Span::call_site(),
+                            )),
                         }),
                         guard: None,
                         fat_arrow_token: Default::default(),
